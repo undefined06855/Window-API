@@ -30,7 +30,7 @@ endif()
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
 # prevent using robtop glfw headers since we don't need them ever
-target_compile_definitions(${PROJECT_NAME} PUBLIC _glfw3_h_ _glfw3_native_h_ __CC_EGLVIEW_WIN32_H__)
+target_compile_definitions(${PROJECT_NAME} PUBLIC _glfw3_h_ _glfw3_native_h_ __CC_EGLVIEW_WIN32_H__ __CC_IME_DISPATCHER_H__)
 
 set(GLFW_BUILD_DOCS OFF)
 CPMAddPackage("gh:glfw/glfw#3.5.1")

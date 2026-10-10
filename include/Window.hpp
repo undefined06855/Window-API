@@ -20,6 +20,15 @@ private:
 
     void swapContexts();
     void unswapContexts();
+
+    std::pair<cocos2d::CCArray*, cocos2d::CCArray*> filterTouchDispatcher();
+    void unfilterTouchDispatcher(std::pair<cocos2d::CCArray*, cocos2d::CCArray*> handlers);
+
+    cocos2d::CCArray* filterKeyboardDispatcher();
+    void unfilterKeyboardDispatcher(cocos2d::CCArray* handlers);
+
+    cocos2d::CCIMEDelegate* filterIMEDelegate();
+    void unfilterIMEDelegate(cocos2d::CCIMEDelegate* delegate);
 public:
     /**
      * Creates a window with a size and title. This will create the actual window itself and call glfwCreateWindow, if
@@ -70,6 +79,61 @@ public:
     void setScale(float scale);
 
     /**
+     * Gets whether the window is minimized (iconified).
+     */
+    void setMinimized(bool minimized);
+
+    /**
+     * Gets whether the window is maximized.
+     */
+    void setMaximized(bool maximized);
+
+    /**
+     * Focuses the window.
+     */
+    void focus();
+
+    /**
+     * Begins a touch at some point in the window in cocos coordinates.
+     */
+    void beginTouch(cocos2d::CCPoint pos);
+
+    /**
+     * Ends a touch at some point in the window in cocos coordinates.
+     */
+    void endTouch(cocos2d::CCPoint pos);
+
+    /**
+     * Moves a touch at some point in the window in cocos coordinates.
+     */
+    void moveTouch(cocos2d::CCPoint pos);
+
+    /**
+     * Presses a key in the window.
+     */
+    void keyDown(cocos2d::enumKeyCodes key, bool shift, bool ctrl, bool alt, bool cmd);
+
+    /**
+     * Releases a key in the window.
+     */
+    void keyUp(cocos2d::enumKeyCodes key, bool shift, bool ctrl, bool alt, bool cmd);
+
+    /**
+     * Calls CCIMEDispatcher::dispatchInsertText in the window.
+     */
+    void insertText(geode::ZStringView text, cocos2d::enumKeyCodes keys);
+
+    /**
+     * Calls CCIMEDispatcher::deleteForward in the window.
+     */
+    void deleteForward();
+
+    /**
+     * Calls CCIMEDispatcher::deleteBackward in the window.
+     */
+    void deleteBackward();
+
+    /**
      * Gets the node that this window is rendering. Be warned when storing this, since it may not be tied to the
      * lifetime of the window and may just be WeakRef'd!
      */
@@ -111,15 +175,40 @@ public:
     cocos2d::CCSize getSize();
 
     /**
+     * Gets whether the window is minimized (iconified).
+     */
+    bool getMinimized();
+
+    /**
+     * Gets whether the window is maximized.
+     */
+    bool getMaximized();
+
+    /**
+     * Gets whether the window is focused.
+     */
+    bool getFocused();
+
+    /**
      * Gets the scale factor of the window from cocos units to window pixels.
      */
     float getScale();
+
+    /**
+     * Gets whether this window is currently capturing touch.
+     */
+    bool getCapturedTouch();
 
     /**
      * Gets whether the window should close from GLFW. If your window is a traditional one, you should check this often
      * and discard of your window instance if it returns true.
      */
     bool getShouldClose();
+
+    /**
+     * Remaps a GLFW position in the window to a cocos position.
+     */
+    cocos2d::CCPoint getCocosPos(cocos2d::CCPoint glfwPos);
 
     /**
      * Updates the size and position of the window if copy is enabled, and remakes the texture if the window size

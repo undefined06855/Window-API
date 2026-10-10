@@ -14,6 +14,14 @@ struct Window::Impl final {
 
     float scale = 1.f;
 
+    bool capturedTouch = false;
+    geode::Ref<cocos2d::CCTouch> touch = nullptr;
+    cocos2d::CCPoint mousePos = { 0.f, 0.f };
+
+    bool minimized = false;
+    bool maximized = false;
+    bool focused = false;
+
     bool copySize = true;
     bool copyPosition = false;
 
@@ -55,32 +63,96 @@ Window::Window(cocos2d::CCNode* node, geode::ZStringView title)
         geode::log::error("Error when making window! {} ({})", err, code);
     }
 
-    glfwSetCursorPosCallback(m_impl->window, [](GLFWwindow*, double x, double y) {
+    // scary...
+    glfwSetWindowUserPointer(m_impl->window, this);
 
+    glfwSetKeyCallback(m_impl->window, [](GLFWwindow* _window, int key, int scancode, int action, int mods) {
+        auto window = static_cast<Window*>(glfwGetWindowUserPointer(_window));
+        auto cocosKey = cocos2d::CCKeyboardDispatcher::convertKeyCode((cocos2d::enumKeyCodes)key);
+
+        bool shift = mods & GLFW_MOD_SHIFT;
+        bool ctrl = mods & GLFW_MOD_CONTROL;
+        bool alt = mods & GLFW_MOD_ALT;
+        bool cmd = mods & GLFW_MOD_SUPER;
+
+        auto hasDelegate = cocos2d::CCIMEDispatcher::sharedDispatcher()->hasDelegate();
+
+        if (action == GLFW_RELEASE) {
+            if (!hasDelegate) {
+                window->keyUp(cocosKey, shift, ctrl, alt, cmd);
+            }
+
+            return;
+        }
+
+        if (hasDelegate) {
+            if (cocosKey == cocos2d::KEY_Left || cocosKey == cocos2d::KEY_Right) {
+                // robtop functionality lol
+                window->insertText("a", cocosKey);
+            }
+
+            if (cocosKey == cocos2d::KEY_Delete) {
+                window->deleteForward();
+            }
+
+            if (cocosKey == cocos2d::KEY_Backspace) {
+                window->deleteBackward();
+            }
+        }
+
+        if (!hasDelegate || cocosKey == cocos2d::KEY_Escape || cocosKey == cocos2d::KEY_Enter) { // TODO: is this right?
+            window->keyDown(cocosKey, shift, ctrl, alt, cmd);
+        }
     });
 
-    glfwSetWindowFocusCallback(m_impl->window, [](GLFWwindow*, int focus) {
+    glfwSetCharCallback(m_impl->window, [](GLFWwindow* _window, unsigned int codepoint) {
+        auto window = static_cast<Window*>(glfwGetWindowUserPointer(_window));
+        auto hasDelegate = cocos2d::CCIMEDispatcher::sharedDispatcher()->hasDelegate();
+        if (!hasDelegate) return;
 
+        if (codepoint == 0x8) {
+            window->deleteBackward();
+        } else {
+            window->insertText(geode::ZStringView(fmt::format("{:c}", codepoint)), cocos2d::KEY_Unknown);
+        }
     });
 
-    glfwSetWindowIconifyCallback(m_impl->window, [](GLFWwindow*, int minimized) {
-
+    glfwSetCursorPosCallback(m_impl->window, [](GLFWwindow* _window, double x, double y) {
+        auto window = static_cast<Window*>(glfwGetWindowUserPointer(_window));
+        auto pos = window->getCocosPos({ (float)x, (float)y });
+        window->m_impl->mousePos = pos;
+        window->moveTouch(pos);
     });
 
-    glfwSetWindowSizeCallback(m_impl->window, [](GLFWwindow*, int width, int height) {
+    glfwSetMouseButtonCallback(m_impl->window, [](GLFWwindow* _window, int button, int action, int mods) {
+        auto window = static_cast<Window*>(glfwGetWindowUserPointer(_window));
 
+        if (button != GLFW_MOUSE_BUTTON_LEFT) return; // TODO: different button support?
+
+        if (action == GLFW_PRESS) {
+            window->beginTouch(window->m_impl->mousePos);
+        } else if (action == GLFW_RELEASE) {
+            window->endTouch(window->m_impl->mousePos);
+        }
     });
 
-    glfwSetKeyCallback(m_impl->window, [](GLFWwindow*, int key, int scancode, int action, int mods) {
-
+    glfwSetScrollCallback(m_impl->window, [](GLFWwindow* _window, double x, double y) {
+        auto window = static_cast<Window*>(glfwGetWindowUserPointer(_window));
     });
 
-    glfwSetMouseButtonCallback(m_impl->window, [](GLFWwindow*, int button, int action, int mods) {
-
+    glfwSetWindowIconifyCallback(m_impl->window, [](GLFWwindow* _window, int minimized) {
+        auto window = static_cast<Window*>(glfwGetWindowUserPointer(_window));
+        window->m_impl->minimized = minimized;
     });
 
-    glfwSetScrollCallback(m_impl->window, [](GLFWwindow*, double x, double y) {
+    glfwSetWindowMaximizeCallback(m_impl->window, [](GLFWwindow* _window, int maximized) {
+        auto window = static_cast<Window*>(glfwGetWindowUserPointer(_window));
+        window->m_impl->maximized = maximized;
+    });
 
+    glfwSetWindowFocusCallback(m_impl->window, [](GLFWwindow* _window, int focused) {
+        auto window = static_cast<Window*>(glfwGetWindowUserPointer(_window));
+        window->m_impl->focused = focused;
     });
 
     m_impl->node = node;
@@ -178,6 +250,208 @@ void Window::setScale(float scale) {
     this->updateProperties();
 }
 
+void Window::setMinimized(bool minimized) {
+    if (minimized) {
+        glfwIconifyWindow(m_impl->window);
+    } else {
+        glfwRestoreWindow(m_impl->window);
+    }
+}
+
+void Window::setMaximized(bool maximized) {
+    if (maximized) {
+        glfwMaximizeWindow(m_impl->window);
+    } else {
+        glfwRestoreWindow(m_impl->window);
+    }
+}
+
+void Window::focus() {
+    glfwFocusWindow(m_impl->window);
+}
+
+std::pair<cocos2d::CCArray*, cocos2d::CCArray*> Window::filterTouchDispatcher() {
+    auto dispatcher = cocos2d::CCTouchDispatcher::get();
+    auto& manager = WindowManager::get();
+
+    auto origStandardHandlers = dispatcher->m_pStandardHandlers->shallowCopy();
+    auto origTargetedHandlers = dispatcher->m_pTargetedHandlers->shallowCopy();
+
+    auto filterList = [&](cocos2d::CCArray* handlers) {
+        for (int i = 0; i < handlers->count(); i++) {
+            auto handler = static_cast<cocos2d::CCTouchHandler*>(handlers->objectAtIndex(i));
+            auto delegate = geode::cast::typeinfo_cast<cocos2d::CCNode*>(handler->getDelegate());
+            if (!delegate) continue;
+
+            if (manager.findWindowForNode(delegate).get() != this) {
+                handlers->removeObjectAtIndex(i);
+                i--;
+            }
+        }
+    };
+
+    filterList(dispatcher->m_pStandardHandlers);
+    filterList(dispatcher->m_pTargetedHandlers);
+
+    return { origStandardHandlers, origTargetedHandlers };
+}
+
+void Window::unfilterTouchDispatcher(std::pair<cocos2d::CCArray*, cocos2d::CCArray*> handlers) {
+    auto dispatcher = cocos2d::CCTouchDispatcher::get();
+    dispatcher->m_pStandardHandlers->release();
+    dispatcher->m_pTargetedHandlers->release();
+    dispatcher->m_pStandardHandlers = handlers.first;
+    dispatcher->m_pTargetedHandlers = handlers.second;
+    dispatcher->m_pStandardHandlers->retain();
+    dispatcher->m_pTargetedHandlers->retain();
+}
+
+void Window::beginTouch(cocos2d::CCPoint pos) {
+    if (m_impl->capturedTouch) return;
+    m_impl->capturedTouch = true;
+
+    m_impl->touch = new cocos2d::CCTouch();
+    m_impl->touch->autorelease();
+    m_impl->touch->setTouchInfo(1, pos.x, pos.y);
+
+    auto dispatcher = cocos2d::CCTouchDispatcher::get();
+
+    auto origHandlers = this->filterTouchDispatcher();
+    cocos2d::CCSet touches;
+    touches.addObject(m_impl->touch);
+    dispatcher->touchesBegan(&touches, nullptr);
+    this->unfilterTouchDispatcher(origHandlers);
+}
+
+void Window::endTouch(cocos2d::CCPoint pos) {
+    if (!m_impl->capturedTouch) return;
+    m_impl->capturedTouch = false;
+
+    m_impl->touch->setTouchInfo(1, pos.x, pos.y);
+
+    auto dispatcher = cocos2d::CCTouchDispatcher::get();
+
+    auto origHandlers = this->filterTouchDispatcher();
+    cocos2d::CCSet touches;
+    touches.addObject(m_impl->touch);
+    dispatcher->touchesEnded(&touches, nullptr);
+    this->unfilterTouchDispatcher(origHandlers);
+}
+
+void Window::moveTouch(cocos2d::CCPoint pos) {
+    if (!m_impl->capturedTouch) return;
+
+    m_impl->touch->setTouchInfo(1, pos.x, pos.y);
+
+    auto dispatcher = cocos2d::CCTouchDispatcher::get();
+
+    auto origHandlers = this->filterTouchDispatcher();
+    cocos2d::CCSet touches;
+    touches.addObject(m_impl->touch);
+    dispatcher->touchesEnded(&touches, nullptr);
+    this->unfilterTouchDispatcher(origHandlers);
+}
+
+cocos2d::CCArray* Window::filterKeyboardDispatcher() {
+    auto dispatcher = cocos2d::CCKeyboardDispatcher::get();
+    auto& manager = WindowManager::get();
+
+    auto origDelegates = dispatcher->m_pDelegates->shallowCopy();
+
+    for (int i = 0; i < dispatcher->m_pDelegates->count(); i++) {
+        auto delegate = geode::cast::typeinfo_cast<cocos2d::CCNode*>(dispatcher->m_pDelegates->objectAtIndex(i));
+        if (!delegate) continue;
+
+        if (manager.findWindowForNode(delegate).get() != this) {
+            dispatcher->m_pDelegates->removeObjectAtIndex(i);
+            i--;
+        }
+    }
+
+    return origDelegates;
+}
+
+void Window::unfilterKeyboardDispatcher(cocos2d::CCArray* handlers) {
+    auto dispatcher = cocos2d::CCKeyboardDispatcher::get();
+    dispatcher->m_pDelegates->release();
+    dispatcher->m_pDelegates = handlers;
+    dispatcher->m_pDelegates->retain();
+}
+
+void Window::keyDown(cocos2d::enumKeyCodes key, bool shift, bool ctrl, bool alt, bool cmd) {
+    auto origHandlers = this->filterKeyboardDispatcher();
+
+    auto dispatcher = cocos2d::CCKeyboardDispatcher::get();
+    dispatcher->dispatchKeyboardMSG(key, true, false, 0);
+
+    this->unfilterKeyboardDispatcher(origHandlers);
+}
+
+void Window::keyUp(cocos2d::enumKeyCodes key, bool shift, bool ctrl, bool alt, bool cmd) {
+    auto origHandlers = this->filterKeyboardDispatcher();
+
+    auto dispatcher = cocos2d::CCKeyboardDispatcher::get();
+    dispatcher->dispatchKeyboardMSG(key, false, false, 0);
+
+    this->unfilterKeyboardDispatcher(origHandlers);
+}
+
+struct IMEImpl {
+    cocos2d::CCIMEDelegate* delegate;
+};
+
+cocos2d::CCIMEDelegate* Window::filterIMEDelegate() {
+    auto dispatcher = cocos2d::CCIMEDispatcher::sharedDispatcher();
+    auto& manager = WindowManager::get();
+
+    // ccimedispatcher is pimpl, where the impl struct has one member whcih is the ccimedelegate
+    auto impl = *(IMEImpl**)dispatcher;
+
+    auto node = geode::cast::typeinfo_cast<cocos2d::CCNode*>(impl->delegate);
+    if (!node) return impl->delegate;
+
+    if (manager.findWindowForNode(node).get() != this) {
+        impl->delegate = nullptr;
+    }
+
+    return impl->delegate;
+}
+
+void Window::unfilterIMEDelegate(cocos2d::CCIMEDelegate* delegate) {
+    auto dispatcher = cocos2d::CCIMEDispatcher::sharedDispatcher();
+    auto& manager = WindowManager::get();
+    auto impl = *(IMEImpl**)dispatcher;
+
+    impl->delegate = delegate;
+}
+
+void Window::insertText(geode::ZStringView text, cocos2d::enumKeyCodes keys) {
+    auto delegate = this->filterIMEDelegate();
+
+    auto dispatcher = cocos2d::CCIMEDispatcher::sharedDispatcher();
+    dispatcher->dispatchInsertText(text.c_str(), text.length(), keys);
+
+    this->unfilterIMEDelegate(delegate);
+}
+
+void Window::deleteForward() {
+    auto delegate = this->filterIMEDelegate();
+
+    auto dispatcher = cocos2d::CCIMEDispatcher::sharedDispatcher();
+    dispatcher->dispatchDeleteForward();
+
+    this->unfilterIMEDelegate(delegate);
+}
+
+void Window::deleteBackward() {
+    auto delegate = this->filterIMEDelegate();
+
+    auto dispatcher = cocos2d::CCIMEDispatcher::sharedDispatcher();
+    dispatcher->dispatchDeleteBackward();
+
+    this->unfilterIMEDelegate(delegate);
+}
+
 cocos2d::CCNode* Window::getNode() {
     return m_impl->node;
 }
@@ -218,12 +492,34 @@ cocos2d::CCSize Window::getSize() {
     return this->getRealSize() / m_impl->scale;
 }
 
+bool Window::getShouldClose() {
+    return glfwWindowShouldClose(m_impl->window);
+}
+
+bool Window::getMinimized() {
+    return m_impl->minimized;
+}
+
+bool Window::getMaximized() {
+    return m_impl->maximized;
+}
+
+bool Window::getFocused() {
+    return m_impl->focused;
+}
+
 float Window::getScale() {
     return m_impl->scale;
 }
 
-bool Window::getShouldClose() {
-    return glfwWindowShouldClose(m_impl->window);
+bool Window::getCapturedTouch() {
+    return m_impl->capturedTouch;
+}
+
+cocos2d::CCPoint Window::getCocosPos(cocos2d::CCPoint glfwPos) {
+    auto height = this->getRealSize().height;
+    glfwPos.y = height - glfwPos.y;
+    return glfwPos / m_impl->scale;
 }
 
 void Window::updateProperties() {

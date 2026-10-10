@@ -20,6 +20,33 @@ WindowManager& WindowManager::get() {
     return instance;
 }
 
+std::shared_ptr<Window> WindowManager::getWindowByID(geode::ZStringView id) {
+    for (auto window : m_windows) {
+        if (window.expired()) continue;
+        if (window.lock()->getID() == id) return window.lock();
+    }
+
+    return nullptr;
+}
+
+std::shared_ptr<Window> WindowManager::getWindowByNode(cocos2d::CCNode* node) {
+    for (auto window : m_windows) {
+        if (window.expired()) continue;
+        if (window.lock()->getNode() == node) return window.lock();
+    }
+
+    return nullptr;
+}
+
+std::shared_ptr<Window> WindowManager::findWindowForNode(cocos2d::CCNode* node) {
+    auto parent = node;
+    while (parent->getParent() != nullptr) {
+        parent = parent->getParent();
+    }
+
+    return this->getWindowByNode(parent);
+}
+
 void WindowManager::addWindow(std::shared_ptr<Window> window) {
     m_windows.push_back(window);
 }
