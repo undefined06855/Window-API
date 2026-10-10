@@ -4,7 +4,7 @@
 namespace window_api {
 
 /**
- * A class that basically just wraps GLFW since it's statically linked into GD.
+ * A window. When this class is constructed, the window is made, and when it is destructed, the window is closed.
  * Everything in this can only be called from the main thread safely! Do not call this from threads!
  */
 class WINDOW_API_DLL Window {
