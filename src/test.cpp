@@ -3,7 +3,7 @@
 
 class $modify(MenuLayer) {
     struct Fields {
-        std::shared_ptr<window_api::Window> window;
+        std::vector<std::shared_ptr<window_api::Window>> windows;
     };
 
     bool init() {
@@ -34,7 +34,13 @@ class $modify(MenuLayer) {
             )
         ));
 
-        m_fields->window = window;
+        m_fields->windows.push_back(window);
+
+        m_fields->windows.push_back(window_api::Window::create(FLAlertLayer::create("hello", "hi 0", "ok")));
+        m_fields->windows.push_back(window_api::Window::create(FLAlertLayer::create("hello", "hi 1", "yeah")));
+        m_fields->windows.push_back(window_api::Window::create(FLAlertLayer::create("hello", "hi 2", "cool")));
+        m_fields->windows.push_back(window_api::Window::create(FLAlertLayer::create("hello", "hi 3", "damn")));
+        m_fields->windows.push_back(window_api::Window::create(FLAlertLayer::create("hello", "hi 4", "yep")));
 
         return true;
     }

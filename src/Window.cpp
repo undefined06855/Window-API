@@ -542,7 +542,7 @@ void Window::visit() {
     this->unswapContexts();
 
     auto origPos = m_impl->node->getPosition();
-    m_impl->node->setPosition(m_impl->renderNode->getContentSize() / 2.f);
+    m_impl->node->setPosition(m_impl->renderNode->getContentSize() * (m_impl->node->isIgnoreAnchorPointForPosition() ? cocos2d::CCPoint{ 0.f, 0.f } : m_impl->node->getAnchorPoint()));
     cocos2d::ccGLBindTexture2D(123456); // cocos bound texture cache is broken? invalidateCache seems to break everything...
     m_impl->renderNode->render();
     m_impl->node->setPosition(origPos);
