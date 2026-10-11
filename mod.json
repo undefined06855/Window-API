@@ -1,5 +1,5 @@
 {
-    "geode": "5.10.1",
+    "geode": "5.11.1",
     "gd": {
         "win": "2.2081",
         "android": "2.2081",
@@ -11,7 +11,7 @@
     "id": "undefined0.window-api",
     "name": "Window API",
     "developer": "undefined0",
-    "description": "An API for interacting with GLFW.",
+    "description": "An API for interacting with extra GD windows.",
     "tags": [ "api" ],
 
     "api": {
@@ -19,7 +19,7 @@
     },
 
     "links": {
-        "source": "https://github.com/undefined06855/example-mod"
+        "source": "https://github.com/undefined06855/Window-API"
     },
 
     "dependencies": {
