@@ -348,7 +348,7 @@ void Window::moveTouch(cocos2d::CCPoint pos) {
     auto origHandlers = this->filterTouchDispatcher();
     cocos2d::CCSet touches;
     touches.addObject(m_impl->touch);
-    dispatcher->touchesEnded(&touches, nullptr);
+    dispatcher->touchesMoved(&touches, nullptr);
     this->unfilterTouchDispatcher(origHandlers);
 }
 
@@ -518,7 +518,7 @@ bool Window::getCapturedTouch() {
 
 cocos2d::CCPoint Window::getCocosPos(cocos2d::CCPoint glfwPos) {
     auto height = this->getRealSize().height;
-    glfwPos.y = height - glfwPos.y;
+    // glfwPos.y = height - glfwPos.y;
     return glfwPos / m_impl->scale;
 }
 

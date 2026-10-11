@@ -44,7 +44,11 @@ std::shared_ptr<Window> WindowManager::findWindowForNode(cocos2d::CCNode* node) 
         parent = parent->getParent();
     }
 
-    return this->getWindowByNode(parent);
+    // parent is now the rendernode
+    auto wrapper = parent->getChildrenExt()[0];
+    auto realNode = wrapper->getChildrenExt()[0];
+
+    return this->getWindowByNode(realNode);
 }
 
 void WindowManager::addWindow(std::shared_ptr<Window> window) {
